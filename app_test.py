@@ -1,6 +1,8 @@
 # coding: utf-8
 
 from flask import Flask, jsonify, redirect, request
+from flask_cors import CORS
+
 import tflearn
 import tensorflow as tf
 import requests
@@ -18,6 +20,7 @@ from nltk.stem.snowball import  RussianStemmer
 from nltk.tokenize import TweetTokenizer
 
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/get_data', methods=['POST'])
 def predict_data():
@@ -28,34 +31,45 @@ def predict_data():
     init()
 
     if request.method == 'POST':
-        model = build_model(learning_rate=0.75)
-        model.load("./my_model.tflearn")
-        predictions = (np.array(model.predict(vectorized_parsed_tweets))[:,0] >= 0.5).astype(np.int_)
+        data = request.json
+        startdate = data["startdate"]
+        enddate = data["enddate"]
+        keyword = data["keyword"]
 
-        # for i in range(0, len(vectorized_parsed_tweets)):
-        #     print(parsed_tweets["text"][i])
-        #     print(predictions[i])
+        print(type(startdate))
+        print(type(enddate))
+        print(type(keyword))
+        # model = build_model(learning_rate=0.75)
+        # model.load("./my_model.tflearn")
+        # predictions = (np.array(model.predict(vectorized_parsed_tweets))[:,0] >= 0.5).astype(np.int_)
+        #
+        # # for i in range(0, len(vectorized_parsed_tweets)):
+        # #     print(parsed_tweets["text"][i])
+        # #     print(predictions[i])
+        #
+        # return predictions
 
-        return predictions
+        return "Hello!"
 
 @app.route('/vectorize', methods=['POST'])
 def vectorize():
-    global vectorized_parsed_tweets
-
     init()
 
     if request.method == 'POST':
         print("Request Request Request Request Request")
-        vectorized_parsed_tweets = []
+        vectorized_parsed_tweets = ""
 
         parsed_tweets = request.json
 
         for i in range(0, len(parsed_tweets)):
-            vectorized_parsed_tweets.append(tweet_to_vector(parsed_tweetsp[i]["text"].lower(), True))
+            if( i == len(parsed_tweets) - 1 ):
+                vectorized_parsed_tweets = vectorized_parsed_tweets + str(tweet_to_vector(parsed_tweets[i]["text"].lower(), True))
+            else:
+                vectorized_parsed_tweets = vectorized_parsed_tweets + str(str(tweet_to_vector(parsed_tweets[i]["text"].lower(), True)) + ",")
 
         print(vectorized_parsed_tweets)
 
-        return str(vectorized_parsed_tweets)
+        return vectorized_parsed_tweets
 
 
 def init():
@@ -99,8 +113,8 @@ def tweet_to_vector(tweet, show_unknowns=False):
         idx = token_2_idx.get(stem, None)
         if idx is not None:
             vector[idx] = 1
-        elif show_unknowns:
-            print("Unknown token: {}".format(token))
+        # elif show_unknowns:
+            # print("Unknown token: {}".format(token))
     return vector
 
 #Building the NN
