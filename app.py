@@ -15,117 +15,100 @@ from tflearn.data_utils import to_categorical
 from nltk.stem.snowball import  RussianStemmer
 from nltk.tokenize import TweetTokenizer
 
-VOCAB_SIZE = 5000
-negative_tweets = pd.read_json("negative_hack.json", encoding = 'utf-8')
-positive_tweets = pd.read_json("positive_hack1.json", encoding = 'utf-8')
+app = Flask(__name__)
 
-stemer = RussianStemmer()
-regex = re.compile('[^а-яА-Я ]')
-stem_cache = {}
+@app.route('/get_data', methods=['POST'])
+def predict_data():
+    global vectorized_parsed_tweets
+    global parsed_tweets
+    global model
+
+    init()
+
+    if request.method == 'POST':
+        model = build_model(learning_rate=0.75)
+        model.load("./my_model.tflearn")
+        predictions = (np.array(model.predict(vectorized_parsed_tweets))[:,0] >= 0.5).astype(np.int_)
+
+        # for i in range(0, len(vectorized_parsed_tweets)):
+        #     print(parsed_tweets["text"][i])
+        #     print(predictions[i])
+
+        return predictions
+
+@app.route('/vectorize', methods=['POST'])
+def vectorize():
+    global parsed_tweets
+    global vectorized_parsed_tweets
+
+    init()
+
+    if request.method == 'POST':
+        print("Request Request Request Request Request")
+
+        parsed_tweets = pd.read_json("test_posts.json", encoding = 'utf-8')
+        vectorized_parsed_tweets = []
+
+        for i in range(0, parsed_tweets["text"].size):
+            vectorized_parsed_tweets.append(tweet_to_vector(parsed_tweets["text"][i].lower(), True))
+
+        print(vectorized_parsed_tweets)
+
+        return str(vectorized_parsed_tweets)
+
+
+def init():
+    global VOCAB_SIZE
+    global token_2_idx
+    global stem_cache
+    global stemer
+    global regex
+
+    VOCAB_SIZE = 5000
+    stem_vocab = pd.read_json("stem_vocab.json", encoding = 'utf-8')
+    token_2_idx = {stem_vocab.values[i][0]: i for i in range(VOCAB_SIZE)}
+
+    with open('stem_cache.json') as f:
+        stem_cache = json.load(f)
+
+    stemer = RussianStemmer()
+    regex = re.compile('[^а-яА-Я ]')
 
 def get_stem(token):
+    global stem_cache
+    global stemer
+    global regex
+
+    token = regex.sub('', token).lower()
+    token = stemer.stem(token)
     stem = stem_cache.get(token, None)
+
     if stem:
         return stem
-    token = regex.sub('', token).lower()
-    stem = stemer.stem(token)
-    stem_cache[token] = stem
-    return stem
-
-stem_count = Counter()
-tokenizer = TweetTokenizer()
-num_texts1 = positive_tweets["text"].size
-num_texts2 = negative_tweets["text"].size
-
-def count_unique_tokens_in_tweets_pos(tweets):
-    for i in range(0,num_texts1):
-        tweet = positive_tweets["text"][i]
-        tokens = tokenizer.tokenize(tweet)
-        for token in tokens:
-            stem = get_stem(token)
-            stem_count[stem] += 1
-
-def count_unique_tokens_in_tweets_neg(tweets):
-    for i in range(0,num_texts2):
-        tweet = negative_tweets["text"][i]
-        tokens = tokenizer.tokenize(tweet)
-        for token in tokens:
-            stem = get_stem(token)
-            stem_count[stem] += 1
-
-count_unique_tokens_in_tweets_neg(neg)
-count_unique_tokens_in_tweets_pos(pos)
-vocab = sorted(stem_count, key=stem_count.get, reverse=True)[:VOCAB_SIZE]
 
 def tweet_to_vector(tweet, show_unknowns=False):
+    global VOCAB_SIZE
+    global token_2_idx
+
+    tokenizer = TweetTokenizer()
+
     vector = np.zeros(VOCAB_SIZE, dtype=np.int_)
     for token in tokenizer.tokenize(tweet):
         stem = get_stem(token)
         idx = token_2_idx.get(stem, None)
         if idx is not None:
             vector[idx] = 1
+        elif show_unknowns:
+            print("Unknown token: {}".format(token))
     return vector
-
-    tweet_vectors = np.zeros(
-    (len(neg) + len(pos), VOCAB_SIZE), 
-    dtype=np.int_)
-tweets = []
-for ii, (_, tweet) in enumerate(negative_tweets.iterrows()):
-    tweets.append(tweet[0])
-    tweet_vectors[ii] = tweet_to_vector(tweet[0])
-for ii, (_, tweet) in enumerate(positive_tweets.iterrows()):
-    tweets.append(tweet[0])
-    tweet_vectors[ii + len(neg)] = tweet_to_vector(tweet[0])
-
-labels = np.append(
-    np.zeros(len(neg), dtype=np.int_), 
-    np.ones(len(pos), dtype=np.int_))
-
-labels[:10]
-labels[-10:]
-
-X = tweet_vectors
-y = to_categorical(labels, 2)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5)
-
-app = Flask(__name__)
-
-@app.route('/get_data', methods=['POST'])
-def predict_data():
-    if request.method == 'POST':
-        model = build_model(learning_rate=0.75)
-        model = model.load("model.tfl")
-
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        source = request.args.get('source')
-        keyword = request.args.get('keyword')
-
-        req = requests.post("http://localhost:3000/api/v1/get_data", data={'start_date': '01.01.2018', 'end_date': '10.01.2018', 'source': 'Vk', 'keyword': 'Астана'})
-        response = req.json()
-        print(response)
-        # response = request.values
-
-        # {
-        #   'keyword': params[:keyword],
-        #   'date': params[:start_date],
-        #   'sources': [
-        #     {
-        #       'vk': {
-        #         'posts_count': @posts_needed.length,
-        #         'posts_count_pos': @posts_needed.length,
-        #         'posts_count_neg': @posts_needed.length,
-        #       }
-        #     }
-        #   ]
-        # }
-        return start_date
 
 #Building the NN
 def build_model(learning_rate=0.1):
+    global VOCAB_SIZE
+
     tf.reset_default_graph()
 
-    net = tflearn.input_data([None, 5000])
+    net = tflearn.input_data([None, VOCAB_SIZE])
     net = tflearn.fully_connected(net, 125, activation='ReLU')
     net = tflearn.fully_connected(net, 25, activation='ReLU')
     net = tflearn.fully_connected(net, 2, activation='softmax')
@@ -139,4 +122,4 @@ def build_model(learning_rate=0.1):
     return model
 
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)

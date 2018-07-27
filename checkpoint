@@ -1,0 +1,2 @@
+model_checkpoint_path: "/Users/AskhatTimur/Desktop/ml-server/my_model.tflearn"
+all_model_checkpoint_paths: "/Users/AskhatTimur/Desktop/ml-server/my_model.tflearn"
