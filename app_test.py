@@ -19,6 +19,8 @@ from tflearn.data_utils import to_categorical
 from nltk.stem.snowball import  RussianStemmer
 from nltk.tokenize import TweetTokenizer
 
+from ast import literal_eval
+
 app = Flask(__name__)
 CORS(app)
 
@@ -32,24 +34,47 @@ def predict_data():
 
     if request.method == 'POST':
         data = request.json
-        startdate = data["startdate"]
-        enddate = data["enddate"]
+        start_date = data["startdate"]
+        end_date = data["enddate"]
         keyword = data["keyword"]
 
-        print(type(startdate))
-        print(type(enddate))
-        print(type(keyword))
-        # model = build_model(learning_rate=0.75)
-        # model.load("./my_model.tflearn")
-        # predictions = (np.array(model.predict(vectorized_parsed_tweets))[:,0] >= 0.5).astype(np.int_)
-        #
-        # # for i in range(0, len(vectorized_parsed_tweets)):
-        # #     print(parsed_tweets["text"][i])
-        # #     print(predictions[i])
-        #
-        # return predictions
+        req = requests.post("http://localhost:3000/api/v1/get_data", data={'start_date': start_date, 'end_date': end_date, 'keyword': keyword})
+        response = req.json()
 
-        return "Hello!"
+        model = build_model(learning_rate=0.75)
+        model.load("./my_model.tflearn")
+
+        stats = {
+            'keyword': keyword,
+            'dates': []
+        }
+
+        for day in response:
+            array = []
+
+            for res in response[day]:
+                array.append(np.fromstring(res["vector"], dtype=int, sep=' '))
+
+            predictions = (np.array(model.predict(array))[:,0] >= 0.5).astype(np.int_)
+
+            pos = 0
+            neg = 0
+            for prediction in predictions:
+                if prediction == 1:
+                    pos += 1
+                else:
+                    neg += 1
+
+            stats['dates'].append({
+                'date': day,
+                'vk': {
+                    'posts_count': len(response[day]),
+                    'posts_count_pos': pos,
+                    'posts_count_neg': neg
+                }
+            })
+
+        return jsonify(stats)
 
 @app.route('/vectorize', methods=['POST'])
 def vectorize():
@@ -63,9 +88,12 @@ def vectorize():
 
         for i in range(0, len(parsed_tweets)):
             if( i == len(parsed_tweets) - 1 ):
-                vectorized_parsed_tweets = vectorized_parsed_tweets + str(tweet_to_vector(parsed_tweets[i]["text"].lower(), True))
+                for i in tweet_to_vector(parsed_tweets[i]["text"].lower(), True):
+                    vectorized_parsed_tweets += str(i) + ' '
             else:
-                vectorized_parsed_tweets = vectorized_parsed_tweets + str(str(tweet_to_vector(parsed_tweets[i]["text"].lower(), True)) + ",")
+                for i in tweet_to_vector(parsed_tweets[i]["text"].lower(), True):
+                    vectorized_parsed_tweets += str(i) + ' '
+                vectorized_parsed_tweets += ','
 
         print(vectorized_parsed_tweets)
 
