@@ -44,9 +44,17 @@ def predict_data():
         model = build_model(learning_rate=0.75)
         model.load("./my_model.tflearn")
 
-        stats = {
-            'keyword': keyword,
-            'dates': []
+        datacollection = {
+            'labels': [],
+            'datasets': [{
+                'label': '',
+                'data': [],
+                'pointBackgroundColor': 'blue',
+                'borderWidth': 3,
+                'borderColor': 'blue',
+                'pointBorderColor': 'blue',
+                'fill': False
+            }]
         }
 
         for day in response:
@@ -65,16 +73,14 @@ def predict_data():
                 else:
                     neg += 1
 
-            stats['dates'].append({
-                'date': day,
-                'vk': {
-                    'posts_count': len(response[day]),
-                    'posts_count_pos': pos,
-                    'posts_count_neg': neg
-                }
-            })
 
-        return jsonify(stats)
+            datacollection['labels'].append(day)
+            datacollection['datasets'][0]['data'].append(len(predictions))
+
+
+        datacollection['datasets'][0]['label'] = keyword
+
+        return jsonify(datacollection)
 
 @app.route('/vectorize', methods=['POST'])
 def vectorize():
