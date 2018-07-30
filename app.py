@@ -31,7 +31,7 @@ def predict_data():
     init()
 
     if request.method == 'POST':
-        data = request.json
+        data = request.get_json()
         start_date = data["startdate"]
         end_date = data["enddate"]
         keyword = data["keyword"]
