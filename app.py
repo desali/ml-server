@@ -10,6 +10,7 @@ import json
 import numpy as np
 import pandas as pd
 import nltk
+import re
 
 from nltk.corpus import stopwords
 from collections import Counter
