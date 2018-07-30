@@ -8,5 +8,4 @@ gunicorn==19.7.1
 flask_cors
 tensorflow
 pandas
-re
 nltk
