@@ -9,3 +9,5 @@ flask_cors
 tensorflow
 pandas
 nltk
+requests
+json

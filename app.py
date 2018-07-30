@@ -9,7 +9,6 @@ import requests
 import json
 import numpy as np
 import pandas as pd
-import re
 import nltk
 
 from nltk.corpus import stopwords
@@ -18,8 +17,6 @@ from sklearn.model_selection import train_test_split
 from tflearn.data_utils import to_categorical
 from nltk.stem.snowball import  RussianStemmer
 from nltk.tokenize import TweetTokenizer
-
-from ast import literal_eval
 
 app = Flask(__name__)
 CORS(app)
