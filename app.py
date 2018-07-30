@@ -18,6 +18,7 @@ from sklearn.model_selection import train_test_split
 from tflearn.data_utils import to_categorical
 from nltk.stem.snowball import  RussianStemmer
 from nltk.tokenize import TweetTokenizer
+from collections import defaultdict
 
 app = Flask(__name__)
 CORS(app)
@@ -31,12 +32,13 @@ def predict_data():
     init()
 
     if request.method == 'POST':
-        data = request.get_json()
+        data = request.json
         start_date = data["startdate"]
         end_date = data["enddate"]
         keyword = data["keyword"]
 
         req = requests.post("https://social-back.herokuapp.com/api/v1/get_data", data={'start_date': start_date, 'end_date': end_date, 'keyword': keyword})
+        # req = requests.post("http://0.0.0.0:3000/api/v1/get_data", data={'start_date': start_date, 'end_date': end_date, 'keyword': keyword})
         response = req.json()
 
         model = build_model(learning_rate=0.75)
@@ -94,24 +96,28 @@ def predict_data():
                     }]
                  }
               }
+            },
+            'main': {
+                'posts': [],
+                'comments': []
             }
-            # 'main': [{
-            #     'user': '',
-            #     'posts': []
-            #     }
-            # ]
         }
+
 
         pos = 0
         neg = 0
 
         posts = response['posts']
 
+        post_texts_arr = []
+        index_sen = 0
         for day in posts:
             array = []
 
             for res in posts[day]:
                 array.append(np.fromstring(res["vector"], dtype=int, sep=' '))
+                post_texts_arr.append((res["username"], {'text': res['text'], 'sentiment': ''}))
+
 
             predictions = (np.array(model.predict(array))[:,0] >= 0.5).astype(np.int_)
 
@@ -120,9 +126,12 @@ def predict_data():
             for prediction in predictions:
                 if prediction == 1:
                     pos += 1
+                    post_texts_arr[index_sen][1]['sentiment'] = 'positive'
+                    index_sen += 1
                 else:
                     neg += 1
-
+                    post_texts_arr[index_sen][1]['sentiment'] = 'negative'
+                    index_sen += 1
 
             response_object['line']['post']['labels'].append(day)
             response_object['line']['post']['datasets'][0]['data'].append(len(predictions))
@@ -140,11 +149,14 @@ def predict_data():
 
         comments = response['comments']
 
+        comment_texts_arr = []
+        index_sen = 0
         for day in comments:
             array = []
 
             for res in comments[day]:
                 array.append(np.fromstring(res["vector"], dtype=int, sep=' '))
+                comment_texts_arr.append((res["username"], {'text': res['text'], 'sentiment': ''}))
 
             predictions = (np.array(model.predict(array))[:,0] >= 0.5).astype(np.int_)
 
@@ -153,8 +165,12 @@ def predict_data():
             for prediction in predictions:
                 if prediction == 1:
                     pos += 1
+                    comment_texts_arr[index_sen][1]['sentiment'] = 'positive'
+                    index_sen += 1
                 else:
                     neg += 1
+                    comment_texts_arr[index_sen][1]['sentiment'] = 'negative'
+                    index_sen += 1
 
 
             response_object['line']['comment']['labels'].append(day)
@@ -167,6 +183,14 @@ def predict_data():
         response_object['pie']['comment']['insta']['datasets'][0]['data'].append( pos )
         # response_object['pie']['post']['insta']['datasets'][0]['data'].append( (neg / (pos + neg)) * 100 )
         response_object['pie']['comment']['insta']['datasets'][0]['data'].append( neg )
+
+        res_posts = defaultdict(list)
+        for v, k in post_texts_arr: res_posts[v].append(k)
+        response_object['main']['posts'] = [{'user':v, 'posts':k} for v,k in res_posts.items()]
+
+        res_comments = defaultdict(list)
+        for v, k in comment_texts_arr: res_comments[v].append(k)
+        response_object['main']['comments'] = [{'user':v, 'comments':k} for v,k in res_comments.items()]
 
         return jsonify(response_object)
 
