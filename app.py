@@ -38,7 +38,7 @@ def predict_data():
         end_date = data["enddate"]
         keyword = data["keyword"]
 
-        req = requests.post("http://localhost:3000/api/v1/get_data", data={'start_date': start_date, 'end_date': end_date, 'keyword': keyword})
+        req = requests.post("https://social-back.herokuapp.com/api/v1/get_data", data={'start_date': start_date, 'end_date': end_date, 'keyword': keyword})
         response = req.json()
 
         model = build_model(learning_rate=0.75)
