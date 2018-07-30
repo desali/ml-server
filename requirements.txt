@@ -10,4 +10,3 @@ tensorflow
 pandas
 nltk
 requests
-json
