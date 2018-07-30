@@ -1,6 +1,8 @@
 # coding: utf-8
 
 from flask import Flask, jsonify, redirect, request
+from flask_cors import CORS
+
 import tflearn
 import tensorflow as tf
 import requests
@@ -17,7 +19,10 @@ from tflearn.data_utils import to_categorical
 from nltk.stem.snowball import  RussianStemmer
 from nltk.tokenize import TweetTokenizer
 
+from ast import literal_eval
+
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/get_data', methods=['POST'])
 def predict_data():
@@ -28,35 +33,167 @@ def predict_data():
     init()
 
     if request.method == 'POST':
+        data = request.json
+        start_date = data["startdate"]
+        end_date = data["enddate"]
+        keyword = data["keyword"]
+
+        req = requests.post("http://localhost:3000/api/v1/get_data", data={'start_date': start_date, 'end_date': end_date, 'keyword': keyword})
+        response = req.json()
+
         model = build_model(learning_rate=0.75)
         model.load("./my_model.tflearn")
-        predictions = (np.array(model.predict(vectorized_parsed_tweets))[:,0] >= 0.5).astype(np.int_)
 
-        # for i in range(0, len(vectorized_parsed_tweets)):
-        #     print(parsed_tweets["text"][i])
-        #     print(predictions[i])
+        response_object = {
+            'line': {
+                'post': {
+                    'labels': [],
+                    'datasets': [{
+                        'label': 'Инстаграм',
+                        'data': [],
+                        'pointBackgroundColor': 'blue',
+                        'borderWidth': 3,
+                        'borderColor': 'blue',
+                        'pointBorderColor': 'blue',
+                        'fill': False
+                    }]
+                },
+                'comment': {
+                    'labels': [],
+                    'datasets': [{
+                        'label': 'Инстаграм',
+                        'data': [],
+                        'pointBackgroundColor': 'blue',
+                        'borderWidth': 3,
+                        'borderColor': 'blue',
+                        'pointBorderColor': 'blue',
+                        'fill': False
+                    }]
+                }
+            },
+            'pie': {
+                'post': {
+                    'insta': {
+                    'labels': ['Позитивность', 'Негативность'],
+                     'datasets': [{
+                         'backgroundColor': [
+                           '#00D8FF',
+                           '#E46651'
+                         ],
+                         'data': []
+                       }]
+                    }
+               },
+               'comment': {
+                  'insta': {
+                   'labels': ['Позитивность', 'Негативность'],
+                    'datasets': [{
+                        'backgroundColor': [
+                          '#00D8FF',
+                          '#E46651'
+                        ],
+                        'data': []
+                    }]
+                 }
+              }
+            }
+            # 'main': [{
+            #     'user': '',
+            #     'posts': []
+            #     }
+            # ]
+        }
 
-        return predictions
+        pos = 0
+        neg = 0
+
+        posts = response['posts']
+
+        for day in posts:
+            array = []
+
+            for res in posts[day]:
+                array.append(np.fromstring(res["vector"], dtype=int, sep=' '))
+
+            predictions = (np.array(model.predict(array))[:,0] >= 0.5).astype(np.int_)
+
+            # pos = 0
+            # neg = 0
+            for prediction in predictions:
+                if prediction == 1:
+                    pos += 1
+                else:
+                    neg += 1
+
+
+            response_object['line']['post']['labels'].append(day)
+            response_object['line']['post']['datasets'][0]['data'].append(len(predictions))
+
+
+        response_object['line']['post']['datasets'][0]['label'] = keyword
+
+        # response_object['pie']['post']['insta']['datasets'][0]['data'].append( (pos / (pos + neg)) * 100 )
+        response_object['pie']['post']['insta']['datasets'][0]['data'].append( pos )
+        # response_object['pie']['post']['insta']['datasets'][0]['data'].append( (neg / (pos + neg)) * 100 )
+        response_object['pie']['post']['insta']['datasets'][0]['data'].append( neg )
+
+        pos = 0
+        neg = 0
+
+        comments = response['comments']
+
+        for day in comments:
+            array = []
+
+            for res in comments[day]:
+                array.append(np.fromstring(res["vector"], dtype=int, sep=' '))
+
+            predictions = (np.array(model.predict(array))[:,0] >= 0.5).astype(np.int_)
+
+            # pos = 0
+            # neg = 0
+            for prediction in predictions:
+                if prediction == 1:
+                    pos += 1
+                else:
+                    neg += 1
+
+
+            response_object['line']['comment']['labels'].append(day)
+            response_object['line']['comment']['datasets'][0]['data'].append(len(predictions))
+
+
+        response_object['line']['comment']['datasets'][0]['label'] = keyword
+
+        # response_object['pie']['post']['insta']['datasets'][0]['data'].append( (pos / (pos + neg)) * 100 )
+        response_object['pie']['comment']['insta']['datasets'][0]['data'].append( pos )
+        # response_object['pie']['post']['insta']['datasets'][0]['data'].append( (neg / (pos + neg)) * 100 )
+        response_object['pie']['comment']['insta']['datasets'][0]['data'].append( neg )
+
+        return jsonify(response_object)
 
 @app.route('/vectorize', methods=['POST'])
 def vectorize():
-    global parsed_tweets
-    global vectorized_parsed_tweets
-
     init()
 
     if request.method == 'POST':
         print("Request Request Request Request Request")
+        vectorized_parsed_tweets = ""
 
-        parsed_tweets = pd.read_json("test_posts.json", encoding = 'utf-8')
-        vectorized_parsed_tweets = []
+        parsed_tweets = request.json
 
-        for i in range(0, parsed_tweets["text"].size):
-            vectorized_parsed_tweets.append(tweet_to_vector(parsed_tweets["text"][i].lower(), True))
+        for i in range(0, len(parsed_tweets)):
+            if( i == len(parsed_tweets) - 1 ):
+                for i in tweet_to_vector(parsed_tweets[i]["text"].lower(), True):
+                    vectorized_parsed_tweets += str(i) + ' '
+            else:
+                for i in tweet_to_vector(parsed_tweets[i]["text"].lower(), True):
+                    vectorized_parsed_tweets += str(i) + ' '
+                vectorized_parsed_tweets += ','
 
         print(vectorized_parsed_tweets)
 
-        return str(vectorized_parsed_tweets)
+        return vectorized_parsed_tweets
 
 
 def init():
@@ -100,8 +237,8 @@ def tweet_to_vector(tweet, show_unknowns=False):
         idx = token_2_idx.get(stem, None)
         if idx is not None:
             vector[idx] = 1
-        elif show_unknowns:
-            print("Unknown token: {}".format(token))
+        # elif show_unknowns:
+            # print("Unknown token: {}".format(token))
     return vector
 
 #Building the NN

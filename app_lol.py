@@ -1,8 +1,6 @@
 # coding: utf-8
 
 from flask import Flask, jsonify, redirect, request
-from flask_cors import CORS
-
 import tflearn
 import tensorflow as tf
 import requests
@@ -19,10 +17,7 @@ from tflearn.data_utils import to_categorical
 from nltk.stem.snowball import  RussianStemmer
 from nltk.tokenize import TweetTokenizer
 
-from ast import literal_eval
-
 app = Flask(__name__)
-CORS(app)
 
 @app.route('/get_data', methods=['POST'])
 def predict_data():
@@ -33,77 +28,35 @@ def predict_data():
     init()
 
     if request.method == 'POST':
-        data = request.json
-        start_date = data["startdate"]
-        end_date = data["enddate"]
-        keyword = data["keyword"]
-
-        req = requests.post("http://localhost:3000/api/v1/get_data", data={'start_date': start_date, 'end_date': end_date, 'keyword': keyword})
-        response = req.json()
-
         model = build_model(learning_rate=0.75)
         model.load("./my_model.tflearn")
+        predictions = (np.array(model.predict(vectorized_parsed_tweets))[:,0] >= 0.5).astype(np.int_)
 
-        datacollection = {
-            'labels': [],
-            'datasets': [{
-                'label': '',
-                'data': [],
-                'pointBackgroundColor': 'blue',
-                'borderWidth': 3,
-                'borderColor': 'blue',
-                'pointBorderColor': 'blue',
-                'fill': False
-            }]
-        }
+        # for i in range(0, len(vectorized_parsed_tweets)):
+        #     print(parsed_tweets["text"][i])
+        #     print(predictions[i])
 
-        for day in response:
-            array = []
-
-            for res in response[day]:
-                array.append(np.fromstring(res["vector"], dtype=int, sep=' '))
-
-            predictions = (np.array(model.predict(array))[:,0] >= 0.5).astype(np.int_)
-
-            pos = 0
-            neg = 0
-            for prediction in predictions:
-                if prediction == 1:
-                    pos += 1
-                else:
-                    neg += 1
-
-
-            datacollection['labels'].append(day)
-            datacollection['datasets'][0]['data'].append(len(predictions))
-
-
-        datacollection['datasets'][0]['label'] = keyword
-
-        return jsonify(datacollection)
+        return predictions
 
 @app.route('/vectorize', methods=['POST'])
 def vectorize():
+    global parsed_tweets
+    global vectorized_parsed_tweets
+
     init()
 
     if request.method == 'POST':
         print("Request Request Request Request Request")
-        vectorized_parsed_tweets = ""
 
-        parsed_tweets = request.json
+        parsed_tweets = pd.read_json("test_posts.json", encoding = 'utf-8')
+        vectorized_parsed_tweets = []
 
-        for i in range(0, len(parsed_tweets)):
-            if( i == len(parsed_tweets) - 1 ):
-                for i in tweet_to_vector(parsed_tweets[i]["text"].lower(), True):
-                    vectorized_parsed_tweets += str(i) + ' '
-            else:
-                for i in tweet_to_vector(parsed_tweets[i]["text"].lower(), True):
-                    vectorized_parsed_tweets += str(i) + ' '
-                vectorized_parsed_tweets += ','
+        for i in range(0, parsed_tweets["text"].size):
+            vectorized_parsed_tweets.append(tweet_to_vector(parsed_tweets["text"][i].lower(), True))
 
         print(vectorized_parsed_tweets)
 
-        return vectorized_parsed_tweets
+        return str(vectorized_parsed_tweets)
 
 
 def init():
@@ -147,8 +100,8 @@ def tweet_to_vector(tweet, show_unknowns=False):
         idx = token_2_idx.get(stem, None)
         if idx is not None:
             vector[idx] = 1
-        # elif show_unknowns:
-            # print("Unknown token: {}".format(token))
+        elif show_unknowns:
+            print("Unknown token: {}".format(token))
     return vector
 
 #Building the NN
